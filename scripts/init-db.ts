@@ -1,7 +1,14 @@
 import { initSchema, seedDemoData } from '../lib/db/schema';
 
-console.log('Initializing database...');
-initSchema();
-console.log('Seeding demo data...');
-seedDemoData();
-console.log('Done!');
+async function main() {
+  console.log('Initializing database...');
+  await initSchema();
+  console.log('Seeding demo data...');
+  await seedDemoData();
+  console.log('Done!');
+}
+
+main().catch((err) => {
+  console.error('Database initialization failed:', err);
+  process.exit(1);
+});

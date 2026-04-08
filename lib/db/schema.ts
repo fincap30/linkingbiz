@@ -1,10 +1,10 @@
 import { getDb } from './database';
 
-export function initSchema() {
+export async function initSchema() {
   const db = getDb();
 
   // Users table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -19,7 +19,7 @@ export function initSchema() {
   `);
 
   // Industries table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS industries (
       id TEXT PRIMARY KEY,
       name TEXT UNIQUE NOT NULL,
@@ -31,7 +31,7 @@ export function initSchema() {
   `);
 
   // Businesses table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS businesses (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -63,7 +63,7 @@ export function initSchema() {
   `);
 
   // Referrals table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS referrals (
       id TEXT PRIMARY KEY,
       referrer_id TEXT NOT NULL,
@@ -84,7 +84,7 @@ export function initSchema() {
   `);
 
   // Reviews table
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
       business_id TEXT NOT NULL,
@@ -98,7 +98,7 @@ export function initSchema() {
   `);
 
   // Sessions table for JWT tokens
-  db.exec(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -123,24 +123,24 @@ export function initSchema() {
     { name: 'Manufacturing', slug: 'manufacturing', icon: 'Factory', description: 'Production and manufacturing' },
   ];
 
-  const insertIndustry = db.prepare(`
-    INSERT OR IGNORE INTO industries (id, name, slug, icon, description)
-    VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)
-  `);
-
   for (const industry of industries) {
-    insertIndustry.run(industry.name, industry.slug, industry.icon, industry.description);
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO industries (id, name, slug, icon, description)
+            VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)`,
+      args: [industry.name, industry.slug, industry.icon, industry.description],
+    });
   }
 
   console.log('Database schema initialized successfully');
 }
 
-export function seedDemoData() {
+export async function seedDemoData() {
   const db = getDb();
 
   // Check if we already have data
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-  if (userCount.count > 0) {
+  const result = await db.execute('SELECT COUNT(*) as count FROM users');
+  const userCount = Number(result.rows[0].count);
+  if (userCount > 0) {
     console.log('Demo data already exists, skipping...');
     return;
   }
@@ -148,25 +148,28 @@ export function seedDemoData() {
   // Create demo admin user
   const adminId = crypto.randomUUID();
   const adminPasswordHash = '$2b$10$YourHashedPasswordHere'; // Placeholder - will be set via auth
-  
-  db.prepare(`
-    INSERT INTO users (id, email, password_hash, role, full_name, phone)
-    VALUES (?, ?, ?, 'admin', 'Admin User', '+27 12 345 6789')
-  `).run(adminId, 'admin@linkingbiz.co.za', adminPasswordHash);
+
+  await db.execute({
+    sql: `INSERT INTO users (id, email, password_hash, role, full_name, phone)
+          VALUES (?, ?, ?, 'admin', 'Admin User', '+27 12 345 6789')`,
+    args: [adminId, 'admin@linkingbiz.co.za', adminPasswordHash],
+  });
 
   // Create demo business user
   const businessUserId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO users (id, email, password_hash, role, full_name, phone)
-    VALUES (?, ?, ?, 'business', 'Demo Business Owner', '+27 12 345 6790')
-  `).run(businessUserId, 'business@example.com', adminPasswordHash);
+  await db.execute({
+    sql: `INSERT INTO users (id, email, password_hash, role, full_name, phone)
+          VALUES (?, ?, ?, 'business', 'Demo Business Owner', '+27 12 345 6790')`,
+    args: [businessUserId, 'business@example.com', adminPasswordHash],
+  });
 
   // Create demo referrer user
   const referrerId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO users (id, email, password_hash, role, full_name, phone)
-    VALUES (?, ?, ?, 'referrer', 'Demo Referrer', '+27 12 345 6791')
-  `).run(referrerId, 'referrer@example.com', adminPasswordHash);
+  await db.execute({
+    sql: `INSERT INTO users (id, email, password_hash, role, full_name, phone)
+          VALUES (?, ?, ?, 'referrer', 'Demo Referrer', '+27 12 345 6791')`,
+    args: [referrerId, 'referrer@example.com', adminPasswordHash],
+  });
 
   // Create demo businesses
   const businesses = [
@@ -175,7 +178,7 @@ export function seedDemoData() {
       user_id: businessUserId,
       name: 'TechFlow Solutions',
       slug: 'techflow-solutions',
-      description: 'We provide cutting-edge software development and IT consulting services for businesses of all sizes. Our team specializes in custom web applications, mobile apps, and cloud infrastructure.',
+      description: 'We provide cutting-edge software development and IT consulting services for businesses of all sizes.',
       short_description: 'Custom software development and IT consulting',
       email: 'info@techflow.co.za',
       phone: '+27 11 123 4567',
@@ -193,7 +196,7 @@ export function seedDemoData() {
       user_id: businessUserId,
       name: 'Growth Marketing SA',
       slug: 'growth-marketing-sa',
-      description: 'Full-service digital marketing agency helping South African businesses grow their online presence through SEO, PPC, social media, and content marketing.',
+      description: 'Full-service digital marketing agency helping South African businesses grow their online presence.',
       short_description: 'Digital marketing and growth strategies',
       email: 'hello@growthmarketing.co.za',
       phone: '+27 21 987 6543',
@@ -211,7 +214,7 @@ export function seedDemoData() {
       user_id: businessUserId,
       name: 'ProBuild Construction',
       slug: 'probuild-construction',
-      description: 'Commercial and residential construction services with over 20 years of experience. Licensed and insured builders serving Gauteng area.',
+      description: 'Commercial and residential construction services with over 20 years of experience.',
       short_description: 'Commercial and residential construction',
       email: 'projects@probuild.co.za',
       phone: '+27 11 456 7890',
@@ -247,7 +250,7 @@ export function seedDemoData() {
       user_id: businessUserId,
       name: 'CloudFirst Finance',
       slug: 'cloudfirst-finance',
-      description: 'Cloud-based accounting and financial services for modern businesses. Bookkeeping, tax preparation, and financial planning.',
+      description: 'Cloud-based accounting and financial services for modern businesses.',
       short_description: 'Cloud accounting and financial services',
       email: 'info@cloudfirst.co.za',
       phone: '+27 11 789 0123',
@@ -262,19 +265,18 @@ export function seedDemoData() {
     },
   ];
 
-  const insertBusiness = db.prepare(`
-    INSERT INTO businesses (
-      id, user_id, name, slug, description, short_description, email, phone,
-      city, province, industry, services, commission_rate, is_verified, rating, review_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   for (const b of businesses) {
-    insertBusiness.run(
-      b.id, b.user_id, b.name, b.slug, b.description, b.short_description,
-      b.email, b.phone, b.city, b.province, b.industry, b.services,
-      b.commission_rate, b.is_verified, b.rating, b.review_count
-    );
+    await db.execute({
+      sql: `INSERT INTO businesses (
+              id, user_id, name, slug, description, short_description, email, phone,
+              city, province, industry, services, commission_rate, is_verified, rating, review_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        b.id, b.user_id, b.name, b.slug, b.description, b.short_description,
+        b.email, b.phone, b.city, b.province, b.industry, b.services,
+        b.commission_rate, b.is_verified, b.rating, b.review_count,
+      ],
+    });
   }
 
   // Create demo referrals
@@ -296,7 +298,10 @@ export function seedDemoData() {
       business_id: businesses[1].id,
       customer_name: 'Sarah Johnson',
       customer_email: 'sarah@example.com',
+      customer_phone: null,
       status: 'pending',
+      commission_amount: null,
+      commission_paid: 0,
     },
     {
       id: crypto.randomUUID(),
@@ -306,21 +311,22 @@ export function seedDemoData() {
       customer_email: 'mike@example.com',
       customer_phone: '+27 83 987 6543',
       status: 'contacted',
+      commission_amount: null,
+      commission_paid: 0,
     },
   ];
 
-  const insertReferral = db.prepare(`
-    INSERT INTO referrals (
-      id, referrer_id, business_id, customer_name, customer_email, customer_phone,
-      status, commission_amount, commission_paid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   for (const r of referrals) {
-    insertReferral.run(
-      r.id, r.referrer_id, r.business_id, r.customer_name, r.customer_email,
-      r.customer_phone || null, r.status, r.commission_amount || null, r.commission_paid || 0
-    );
+    await db.execute({
+      sql: `INSERT INTO referrals (
+              id, referrer_id, business_id, customer_name, customer_email, customer_phone,
+              status, commission_amount, commission_paid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        r.id, r.referrer_id, r.business_id, r.customer_name, r.customer_email,
+        r.customer_phone, r.status, r.commission_amount, r.commission_paid,
+      ],
+    });
   }
 
   console.log('Demo data seeded successfully');

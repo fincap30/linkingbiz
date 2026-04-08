@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
 import { registerUser, setAuthCookie, createToken } from '@/lib/db';
+import { registerSchema, getFirstZodError } from '@/lib/validation';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
   try {
-    const { email, password, fullName, role } = await request.json();
-
-    if (!email || !password || !fullName || !role) {
+    // Rate limiting: 5 registration attempts per minute per IP
+    const ip = getClientIp(request);
+    const limiter = rateLimit(`register:${ip}`, { maxRequests: 5, windowSeconds: 60 });
+    if (!limiter.success) {
       return NextResponse.json(
-        { error: 'All fields are required' },
-        { status: 400 }
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((limiter.resetAt - Date.now()) / 1000)) } }
       );
     }
 
+    const body = await request.json();
+
+    // Validate input
+    const parsed = registerSchema.safeParse(body);
+    if (!parsed.success) {
+      const firstError = getFirstZodError(parsed.error);
+      return NextResponse.json({ error: firstError }, { status: 400 });
+    }
+
+    const { email, password, fullName, role } = parsed.data;
     const { user, error } = await registerUser(email, password, fullName, role);
 
     if (error || !user) {

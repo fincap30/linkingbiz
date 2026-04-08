@@ -3,7 +3,17 @@ import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { getDb } from './database';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      'JWT_SECRET environment variable is required. ' +
+      'Generate a strong secret with: openssl rand -base64 64'
+    );
+  }
+  return secret;
+}
+
 const SESSION_EXPIRY = '7d';
 
 export interface User {
@@ -33,12 +43,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 // Create JWT token
 export function createToken(user: User): string {
   return jwt.sign(
-    { 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
     },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: SESSION_EXPIRY }
   );
 }
@@ -46,7 +56,7 @@ export function createToken(user: User): string {
 // Verify JWT token
 export function verifyToken(token: string): { id: string; email: string; role: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: string };
+    return jwt.verify(token, getJwtSecret()) as { id: string; email: string; role: string };
   } catch {
     return null;
   }
@@ -62,8 +72,8 @@ export async function registerUser(
   const db = getDb();
 
   // Check if user exists
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existing) {
+  const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email] });
+  if (existing.rows.length > 0) {
     return { user: null, error: 'Email already registered' };
   }
 
@@ -71,10 +81,11 @@ export async function registerUser(
   const passwordHash = await hashPassword(password);
 
   try {
-    db.prepare(`
-      INSERT INTO users (id, email, password_hash, role, full_name)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, email, passwordHash, role, fullName);
+    await db.execute({
+      sql: `INSERT INTO users (id, email, password_hash, role, full_name)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [id, email, passwordHash, role, fullName],
+    });
 
     const user: User = {
       id,
@@ -87,6 +98,7 @@ export async function registerUser(
 
     return { user, error: null };
   } catch (err) {
+    console.error('Failed to create user:', err);
     return { user: null, error: 'Failed to create user' };
   }
 }
@@ -98,27 +110,29 @@ export async function loginUser(
 ): Promise<{ user: User | null; token: string | null; error: string | null }> {
   const db = getDb();
 
-  const row = db.prepare(`
-    SELECT id, email, password_hash, role, full_name, phone, avatar_url
-    FROM users WHERE email = ?
-  `).get(email) as any;
+  const result = await db.execute({
+    sql: `SELECT id, email, password_hash, role, full_name, phone, avatar_url
+          FROM users WHERE email = ?`,
+    args: [email],
+  });
 
+  const row = result.rows[0];
   if (!row) {
     return { user: null, token: null, error: 'Invalid email or password' };
   }
 
-  const valid = await verifyPassword(password, row.password_hash);
+  const valid = await verifyPassword(password, row.password_hash as string);
   if (!valid) {
     return { user: null, token: null, error: 'Invalid email or password' };
   }
 
   const user: User = {
-    id: row.id,
-    email: row.email,
-    role: row.role,
-    full_name: row.full_name,
-    phone: row.phone,
-    avatar_url: row.avatar_url,
+    id: row.id as string,
+    email: row.email as string,
+    role: row.role as 'business' | 'referrer' | 'admin',
+    full_name: row.full_name as string,
+    phone: row.phone as string | null,
+    avatar_url: row.avatar_url as string | null,
   };
 
   const token = createToken(user);
@@ -128,10 +142,11 @@ export async function loginUser(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
-  db.prepare(`
-    INSERT INTO sessions (id, user_id, token, expires_at)
-    VALUES (?, ?, ?, ?)
-  `).run(sessionId, user.id, token, expiresAt.toISOString());
+  await db.execute({
+    sql: `INSERT INTO sessions (id, user_id, token, expires_at)
+          VALUES (?, ?, ?, ?)`,
+    args: [sessionId, user.id, token, expiresAt.toISOString()],
+  });
 
   return { user, token, error: null };
 }
@@ -144,20 +159,22 @@ export async function getCurrentUser(token: string | null): Promise<User | null>
   if (!payload) return null;
 
   const db = getDb();
-  const row = db.prepare(`
-    SELECT id, email, role, full_name, phone, avatar_url
-    FROM users WHERE id = ?
-  `).get(payload.id) as any;
+  const result = await db.execute({
+    sql: `SELECT id, email, role, full_name, phone, avatar_url
+          FROM users WHERE id = ?`,
+    args: [payload.id],
+  });
 
+  const row = result.rows[0];
   if (!row) return null;
 
   return {
-    id: row.id,
-    email: row.email,
-    role: row.role,
-    full_name: row.full_name,
-    phone: row.phone,
-    avatar_url: row.avatar_url,
+    id: row.id as string,
+    email: row.email as string,
+    role: row.role as 'business' | 'referrer' | 'admin',
+    full_name: row.full_name as string,
+    phone: row.phone as string | null,
+    avatar_url: row.avatar_url as string | null,
   };
 }
 
@@ -188,6 +205,6 @@ export async function getAuthToken(): Promise<string | null> {
 // Logout user
 export async function logoutUser(token: string) {
   const db = getDb();
-  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  await db.execute({ sql: 'DELETE FROM sessions WHERE token = ?', args: [token] });
   await clearAuthCookie();
 }

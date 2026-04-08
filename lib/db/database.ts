@@ -1,31 +1,30 @@
-import Database from 'better-sqlite3';
-import { join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { createClient, type Client } from '@libsql/client';
 
-let db: Database.Database | null = null;
+let client: Client | null = null;
 
-export function getDb(): Database.Database {
-  if (!db) {
-    // Use a fixed path that works in both dev and production
-    // In production/VPS, use /tmp for SQLite (writable in most environments)
-    const dataDir = process.env.SQLITE_DIR || '/tmp';
-    const dbPath = join(dataDir, 'linkingbiz.sqlite');
-    
-    // Ensure the directory exists
-    if (!existsSync(dataDir)) {
-      mkdirSync(dataDir, { recursive: true });
+export function getDb(): Client {
+  if (!client) {
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+
+    if (!url) {
+      throw new Error(
+        'TURSO_DATABASE_URL environment variable is required. ' +
+        'Set it to your Turso database URL (e.g., libsql://your-db.turso.io)'
+      );
     }
 
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    client = createClient({
+      url,
+      authToken,
+    });
   }
-  return db;
+  return client;
 }
 
-export function closeDb(): void {
-  if (db) {
-    db.close();
-    db = null;
+export async function closeDb(): Promise<void> {
+  if (client) {
+    client.close();
+    client = null;
   }
 }
