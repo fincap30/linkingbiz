@@ -20,6 +20,13 @@ interface ReferralPageProps {
   params: Promise<{ slug: string }>;
 }
 
+// Generate static params for all business slugs
+export async function generateStaticParams() {
+  // For static export, we'll return an empty array
+  // The pages will be generated on-demand at build time
+  return [];
+}
+
 export default function ReferralPage({ params }: ReferralPageProps) {
   const router = useRouter();
   const { slug } = use(params);
